@@ -1,0 +1,23 @@
+# 依赖包列表
+
+# 核心依赖
+whisperx
+torch
+torchaudio
+transformers
+
+# 音频处理
+soundfile
+librosa
+ffmpeg-python
+
+# 说话人分离
+pyannote.audio
+
+# 翻译相关
+sentencepiece
+sacremoses
+
+# 工具库
+pandas
+numpy

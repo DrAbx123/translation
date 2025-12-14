@@ -1,0 +1,36 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+env/
+.env
+
+# 模型和缓存
+*.pt
+*.pth
+*.bin
+*.onnx
+speaker_separation/pretrained_models/
+
+# 音频文件
+*.mp3
+*.wav
+*.flac
+*.m4a
+
+# 输出文件
+*.srt
+*.json
+checkpoints/
+results/
+speaker_separation/output/
+
+# IDE
+.vscode/
+.idea/
+
+# 临时文件
+*.tmp
+*.log
