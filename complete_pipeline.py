@@ -61,13 +61,13 @@ def _patched_torch_load(f, map_location=None, pickle_module=None, *, weights_onl
                 finally:
                     try:
                         os.unlink(tmp_path)
-                    except:
+                    except (OSError, IOError):
                         pass
         except Exception:
             if hasattr(f, 'seek'):
                 try:
                     f.seek(pos)
-                except:
+                except (IOError, OSError):
                     pass
     return _original_torch_load(f, map_location=map_location,
                                 pickle_module=pickle_module,
@@ -201,6 +201,9 @@ def find_overlapping_segments(segments: List[Dict], timeline_resolution: float =
         for i in range(start_idx, min(end_idx + 1, timeline_length)):
             timeline[i].add(speaker)
     
+    # 确保segments按时间排序
+    segments = sorted(segments, key=lambda x: x["start"])
+    
     # 找出重叠区域
     overlap_regions = []
     in_overlap = False
@@ -274,14 +277,24 @@ def separate_mixed_audio(audio: np.ndarray, overlap_region: Dict, device: str) -
             )
             sep_sr = 8000
         else:
-            # 4人或更多，使用4人模型
+            # 4人或更多，尝试使用4人模型
             from speechbrain.inference.separation import SepformerSeparation
-            separator = SepformerSeparation.from_hparams(
-                source="hahmadraz/sepformer-libri4mix",
-                savedir="pretrained_models/sepformer-libri4mix",
-                run_opts={"device": device}
-            )
-            sep_sr = 48000
+            try:
+                separator = SepformerSeparation.from_hparams(
+                    source="hahmadraz/sepformer-libri4mix",
+                    savedir="pretrained_models/sepformer-libri4mix",
+                    run_opts={"device": device}
+                )
+                sep_sr = 48000
+            except Exception as e:
+                print(f"    ⚠ 4人模型加载失败: {e}，回退到3人模型")
+                # 回退到3人模型
+                separator = SepformerSeparation.from_hparams(
+                    source="speechbrain/sepformer-libri3mix",
+                    savedir="pretrained_models/sepformer-libri3mix",
+                    run_opts={"device": device}
+                )
+                sep_sr = 8000
         
         # 重采样
         import torchaudio.functional as F
@@ -302,13 +315,15 @@ def separate_mixed_audio(audio: np.ndarray, overlap_region: Dict, device: str) -
                 src = F.resample(src.unsqueeze(0), sep_sr, SAMPLE_RATE).squeeze(0)
             separated_audios.append(src.numpy())
         
-        # 分配给说话人（简单策略：按顺序）
+        # 分配给说话人
         result = {}
         for i, speaker in enumerate(speakers):
             if i < len(separated_audios):
                 result[speaker] = separated_audios[i]
             else:
-                result[speaker] = mixed_audio  # 如果分离的源不够，用混合音频
+                # 如果分离的源不够，使用静音而不是混合音频
+                # 这样可以避免质量下降，后续转录时会自动跳过
+                result[speaker] = np.zeros_like(mixed_audio)
         
         # 清理
         del separator, audio_tensor, separated

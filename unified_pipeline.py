@@ -48,13 +48,13 @@ def _patched_torch_load(f, map_location=None, pickle_module=None, *, weights_onl
                 finally:
                     try:
                         os.unlink(tmp_path)
-                    except:
+                    except (OSError, IOError):
                         pass
         except Exception:
             if hasattr(f, 'seek'):
                 try:
                     f.seek(pos)
-                except:
+                except (IOError, OSError):
                     pass
     return _original_torch_load(f, map_location=map_location,
                                 pickle_module=pickle_module,
@@ -70,7 +70,7 @@ from huggingface_hub import InferenceClient
 # 配置
 HF_TOKEN = os.environ.get("HF_TOKEN", "")
 USE_QWEN = os.environ.get("USE_QWEN", "false").lower() == "true"
-QWEN_MODEL = "Qwen/Qwen2.5-7B-Instruct"  # 使用更稳定的模型
+QWEN_MODEL = "Qwen/Qwen2.5-7B-Instruct"  # 使用稳定版本，支持推理API，性能和准确性平衡较好
 
 # 全局翻译模型
 translation_model = None
@@ -377,15 +377,24 @@ def analyze_audio_type(segments: List[Dict], num_speakers: int) -> str:
         return "single_speaker"
     else:
         # 检查是否为混杂音频（多人在同一时间段说话）
-        # 简单判断：如果有重叠的说话片段，则为混杂
-        for i in range(len(segments) - 1):
-            if segments[i]['end'] > segments[i + 1]['start']:
+        # 首先按时间排序
+        sorted_segments = sorted(segments, key=lambda x: x['start'])
+        # 检查是否有重叠的说话片段
+        for i in range(len(sorted_segments) - 1):
+            if sorted_segments[i]['end'] > sorted_segments[i + 1]['start']:
                 return "mixed_multi_speaker"
         return "multi_speaker"
 
 
-def merge_short_segments(segments: List[Dict], min_duration: float = 1.0) -> List[Dict]:
-    """合并过短的片段"""
+def merge_short_segments(segments: List[Dict], min_duration: float = 1.0, max_gap: float = 2.0) -> List[Dict]:
+    """
+    合并过短的片段
+    
+    Args:
+        segments: 片段列表
+        min_duration: 最小片段时长（秒）
+        max_gap: 同一说话人片段之间的最大间隔（秒），超过此间隔不合并
+    """
     if not segments:
         return segments
     
@@ -398,7 +407,9 @@ def merge_short_segments(segments: List[Dict], min_duration: float = 1.0) -> Lis
         if current is None:
             current = seg.copy()
             current['texts'] = [seg['text']]
-        elif duration < min_duration and current.get('speaker') == seg.get('speaker'):
+        elif (duration < min_duration and 
+              current.get('speaker') == seg.get('speaker') and
+              seg['start'] - current['end'] <= max_gap):  # 检查时间间隔
             # 合并到当前片段
             current['end'] = seg['end']
             current['texts'].append(seg['text'])
