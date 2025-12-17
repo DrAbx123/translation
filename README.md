@@ -6,9 +6,19 @@
 
 ✅ **语音识别**: 使用 WhisperX 进行高精度日语语音识别
 ✅ **说话人分离**: 自动识别并区分不同的说话人
+✅ **混杂语音处理**: 使用源分离模型处理多人同时说话的情况
+✅ **完整端到端流程**: 从原始音频到最终中文字幕一键完成
 ✅ **中文翻译**: 将日语内容翻译成中文
 ✅ **字幕生成**: 生成带时间戳的 SRT 字幕文件
 ✅ **JSON 输出**: 保存完整的结构化数据
+
+## 支持的场景
+
+- ✅ 无人说话的片段（自动检测并跳过）
+- ✅ 单人说话的纯净音频
+- ✅ 多人轮流说话（通过说话人分离处理）
+- ✅ 多人同时说话的混杂音频（通过源分离模型处理）
+- ✅ 自动检测说话人数量（1-4人，可扩展）
 
 ## 安装步骤
 
@@ -43,26 +53,59 @@ pip install whisperx torch torchaudio transformers pyannote.audio soundfile
 
 ## 使用方法
 
-### 方案一：使用本地翻译模型（推荐，免费）
+### 🌟 推荐：完整的端到端流程（complete_pipeline.py）
 
-```powershell
+这是最新的完整解决方案，能处理所有场景，包括混杂语音：
+
+```bash
+# 基本用法
+python complete_pipeline.py --input input.mp3
+
+# 指定输出文件
+python complete_pipeline.py --input audio.mp3 --output-srt result.srt --output-json result.json
+```
+
+**功能特点：**
+- ✅ 自动检测语音活动（无语音自动跳过）
+- ✅ 自动识别混杂语音片段
+- ✅ 使用源分离模型分离多人同时说话的音频
+- ✅ 分别转录每个说话人
+- ✅ 自动翻译为中文
+- ✅ 生成统一的字幕文件
+
+### 方案二：统一流程（unified_pipeline.py）
+
+适用于简单场景（无混杂语音或混杂程度较低）：
+
+```bash
+python unified_pipeline.py --input input.mp3
+```
+
+### 方案三：使用本地翻译模型（main_local.py）
+
+不需要处理混杂语音的简单场景：
+
+```bash
 python main_local.py
 ```
 
 这个版本使用 Helsinki-NLP 的免费翻译模型，无需 API 密钥。
 
-### 方案二：使用 OpenAI API（需要付费）
+### 方案四：使用 Qwen 大模型翻译（main_qwen.py）
 
-1. 编辑 `main.py`，设置你的 OpenAI API key：
-```python
-client = OpenAI(
-    api_key="sk-your-api-key",
-    base_url="https://api.openai.com/v1"
-)
+最高质量的翻译，但需要 HuggingFace Token：
+
+```bash
+export HF_TOKEN="your-huggingface-token"
+python main_qwen.py
 ```
 
-2. 运行：
-```powershell
+### 方案五：使用 OpenAI API（main.py）
+
+需要付费，需要设置 API key：
+
+```bash
+# 编辑 main.py 设置你的 API key，然后运行
 python main.py
 ```
 
@@ -87,21 +130,63 @@ python main.py
 (そうですね、出かけましょう)
 ```
 
+## 各方案对比
+
+| 方案 | 适用场景 | 混杂语音处理 | 翻译质量 | 速度 | 成本 |
+|------|---------|------------|---------|------|------|
+| **complete_pipeline.py** | 所有场景（推荐） | ✅ 完整支持 | 良好 | 较慢 | 免费 |
+| unified_pipeline.py | 简单场景 | ⚠️ 基础支持 | 良好 | 快 | 免费 |
+| main_qwen.py | 需要高质量翻译 | ⚠️ 基础支持 | 优秀 | 中等 | 免费（需HF） |
+| main_local.py | 简单场景 | ❌ 不支持 | 良好 | 快 | 免费 |
+| main.py | 需要API翻译 | ❌ 不支持 | 优秀 | 快 | 付费 |
+
+## 工作流程说明
+
+### complete_pipeline.py 完整流程
+
+1. **加载音频** - 自动转换为标准格式（16kHz, 单声道）
+2. **检测语音活动** - 使用 VAD 检测是否有人说话
+3. **说话人分离** - 使用 Pyannote 识别谁在什么时候说话
+4. **识别混杂片段** - 自动检测多人同时说话的时间段
+5. **源分离** - 对混杂片段使用 SepFormer 模型分离各个说话人
+6. **创建音轨** - 为每个说话人生成完整的音频轨道
+7. **转录** - 使用 WhisperX 分别转录每个说话人
+8. **翻译** - 将所有日语文本翻译为中文
+9. **生成字幕** - 输出 SRT 和 JSON 格式
+
+### 关键技术
+
+- **Whisper large-v3**: 最高精度的语音识别
+- **Pyannote 3.1**: 最新的说话人分离模型
+- **SepFormer**: 声源分离模型（支持2-4人）
+- **Helsinki-NLP**: 日译中翻译模型
+
 ## 自定义配置
 
-你可以在脚本中修改以下参数：
+### 环境变量
 
-```python
-# 输入/输出文件名
-INPUT_AUDIO = "input.mp3"
-OUTPUT_SRT = "output.srt"
-OUTPUT_JSON = "output.json"
+```bash
+# HuggingFace Token（用于下载模型）
+export HF_TOKEN="your-token"
 
-# Whisper 模型选择 (tiny, base, small, medium, large-v3)
-model = whisperx.load_model("large-v3", device, compute_type=compute_type)
+# 是否使用 Qwen 翻译（unified_pipeline.py）
+export USE_QWEN="true"
+```
 
-# 说话人数量范围（如果已知）
-diarize_segments = diarize_model(audio, min_speakers=2, max_speakers=4)
+### 命令行参数
+
+```bash
+# complete_pipeline.py
+python complete_pipeline.py \
+  --input audio.mp3 \
+  --output-srt result.srt \
+  --output-json result.json
+
+# unified_pipeline.py
+python unified_pipeline.py \
+  --input audio.mp3 \
+  --use-qwen \
+  --num-speakers 4
 ```
 
 ## 常见问题
